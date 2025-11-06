@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>MindAR ESM — Cube on Hiro</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <style>
+    html, body { margin:0; height:100%; overflow:hidden; background:#000; }
+    #tapgate { position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+               color:#fff; background:rgba(0,0,0,.6); font:16px system-ui,sans-serif; z-index:10; }
+    #tapgate.hidden { display:none; }
+    .hud { position:fixed; left:8px; bottom:8px; color:#fff; font:14px system-ui,sans-serif;
+           background:rgba(0,0,0,.45); padding:6px 8px; border-radius:8px; z-index:5; }
+    video { position: fixed; left: -9999px; top: -9999px; opacity: 0; }
+    canvas { touch-action:none; }
+  </style>
+</head>
+<body>
+  <div id="tapgate">Tap to start camera</div>
+  <div class="hud">Aim at <b>hiro.png</b></div>
+
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js';
+    import { MindARThree } from 'https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-three.module.js';
+
+    const tapgate = document.getElementById('tapgate');
+
+    function startOnGesture() {
+      tapgate.classList.add('hidden');
+      init();
+    }
+    window.addEventListener('click', startOnGesture, { once: true });
+    window.addEventListener('touchend', startOnGesture, { once: true });
+
+    async function init() {
+      const mindarThree = new MindARThree({
+        container: document.body,
+        imageTargetSrc: './hiro.mind',
+        maxTrack: 1,
+        uiLoading: true,
+        uiScanning: true,
+      });
+
+      const { renderer, scene, camera } = mindarThree;
+
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.setClearColor(0x000000, 1);
+
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.0));
+
+      const anchor = mindarThree.addAnchor(0);
+
+      const cube = new THREE.Mesh(
+        new THREE.BoxGeometry(0.6, 0.6, 0.6),
+        new THREE.MeshStandardMaterial({ color: 0x4FC3F7, metalness: 0.1, roughness: 0.85 })
+      );
+      cube.position.set(0, 0.3, 0);
+      cube.visible = false;
+      anchor.group.add(cube);
+
+      anchor.onTargetFound = () => { console.log('🔒 Target FOUND'); cube.visible = true; };
+      anchor.onTargetLost  = () => { console.log('🔓 Target LOST');  cube.visible = false; };
+
+      await mindarThree.start();
+
+      // iOS video priming
+      const v = document.querySelector('video');
+      if (v) {
+        v.setAttribute('playsinline', '');
+        v.setAttribute('webkit-playsinline', '');
+        v.muted = true; v.autoplay = true;
+        const kick = () => v.play().catch(()=>{});
+        kick();
+        ['pause','ended','suspend','stalled','abort','emptied','waiting'].forEach(ev =>
+          v.addEventListener(ev, kick, { passive: true })
+        );
+      }
+
+      const clock = new THREE.Clock();
+      const loop = () => {
+        const dt = clock.getDelta();
+        if (cube.visible) cube.rotation.y += dt * Math.PI * 0.5;
+        renderer.render(scene, camera);
+        requestAnimationFrame(loop);
+      };
+      loop();
+
+      window.addEventListener('resize', () => {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    }
+  </script>
+</body>
+</html>
